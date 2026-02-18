@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: fiohub
+      POSTGRES_PASSWORD: fiohub123
+      POSTGRES_DB: fiohub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - fiohub-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - fiohub-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_HOST: redis
+    volumes:
+      - ./backend/app:/app/app
+      - ./uploads:/app/uploads
+    depends_on:
+      - db
+      - redis
+    networks:
+      - fiohub-network
+    command: >
+      sh -c "python -m alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - fiohub-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - fiohub-network
+
+volumes:
+  postgres_data:
+
+networks:
+  fiohub-network:
+    driver: bridge
